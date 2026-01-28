@@ -1,274 +1,164 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { getSocket } from '$lib/socket';
 
-	let connectionStatus: 'disconnected' | 'connected' | 'error' = 'disconnected';
-	let socketId = '';
+	let nickname = $state('');
+	let roomCode = $state('');
+	let loading = $state(false);
+	let activeTab = $state<'create' | 'join'>('create');
+	
+	const s = getSocket();
 
-	let nickname = '';
-	let roomCode = '';
+	$effect(() => {
+		const saved = window.localStorage.getItem('nickname');
+		if (saved) nickname = saved;
+	});
 
-	let lastPong = '';
-	let errorMsg = '';
+	const handleAction = () => {
+		if (!nickname.trim()) {
+			alert('닉네임을 입력해주세요!');
+			return;
+		}
 
-	const socket = getSocket();
+		if (activeTab === 'join' && !roomCode.trim()) {
+			alert('방 코드를 입력해주세요!');
+			return;
+		}
+		
+		loading = true;
+		window.localStorage.setItem('nickname', nickname);
+		
+		if (!s.connected) {
+			s.connect();
+		}
 
-	const connect = () => {
-		if (!socket.connected) socket.connect();
-	};
-
-	const disconnect = () => {
-		socket.disconnect();
-		connectionStatus = 'disconnected';
-		socketId = '';
-	};
-
-	const ping = () => {
-		errorMsg = '';
-		socket.emit('ping');
-	};
-
-	const createRoom = () => {
-		errorMsg = '';
-		const trimmed = nickname.trim();
-		if (!trimmed) return (errorMsg = '닉네임을 입력해 주세요.');
-		if (!socket.connected) return (errorMsg = '소켓이 아직 연결되지 않았습니다.');
-
-		socket.emit('room:create', { nickname: trimmed }, (res: { roomId: string }) => {
-			window.localStorage.setItem('nickname', trimmed);
-			goto(`/room/${res.roomId}`);
-		});
-	};
-
-	const joinRoom = () => {
-		errorMsg = '';
-		const trimmed = nickname.trim();
-		const code = roomCode.trim().toUpperCase();
-
-		if (!trimmed) return (errorMsg = '닉네임을 입력해 주세요.');
-		if (!code) return (errorMsg = '방 코드를 입력해 주세요.');
-		if (!socket.connected) return (errorMsg = '소켓이 아직 연결되지 않았습니다.');
-
-		socket.emit(
-			'room:join',
-			{ roomId: code, nickname: trimmed },
-			(res: { ok: boolean; error?: string }) => {
-				if (!res.ok) {
-					errorMsg = res.error ?? 'JOIN_FAILED';
-					return;
-				}
-				window.localStorage.setItem('nickname', trimmed);
-				goto(`/room/${code}`);
+		const onConnect = () => {
+			if (activeTab === 'create') {
+				s.emit('room:create', { nickname }, (res: { roomId: string }) => {
+					loading = false;
+					if (res.roomId) {
+						goto(`/room/${res.roomId}`);
+					}
+				});
+			} else {
+				s.emit('room:join', { roomId: roomCode.toUpperCase(), nickname }, (res: { ok: boolean; error?: string }) => {
+					loading = false;
+					if (res.ok) {
+						goto(`/room/${roomCode.toUpperCase()}`);
+					} else {
+						alert(res.error === 'ROOM_NOT_FOUND' ? '방을 찾을 수 없습니다.' : 
+							  res.error === 'ROOM_ALREADY_STARTED' ? '이미 게임이 시작되었습니다.' : 
+							  '방 입장에 실패했습니다.');
+					}
+				});
 			}
-		);
+			s.off('connect', onConnect);
+		};
+
+		if (s.connected) {
+			onConnect();
+		} else {
+			s.on('connect', onConnect);
+		}
 	};
-
-	onMount(() => {
-		nickname = window.localStorage.getItem('nickname') ?? '';
-		connect();
-
-		socket.on('connect', () => {
-			socketId = socket.id ?? '';
-			connectionStatus = 'connected';
-			errorMsg = '';
-		});
-
-		socket.on('disconnect', () => {
-			connectionStatus = 'disconnected';
-			socketId = '';
-		});
-
-		socket.on('connect_error', (err) => {
-			connectionStatus = 'error';
-			errorMsg = err?.message ?? 'connect_error';
-		});
-
-		socket.on('pong', () => {
-			lastPong = new Date().toLocaleTimeString();
-		});
-	});
-
-	onDestroy(() => {
-		// IMPORTANT: do not disconnect here (we want the socket to persist across navigation)
-		socket.off('connect');
-		socket.off('disconnect');
-		socket.off('connect_error');
-		socket.off('pong');
-	});
 </script>
 
-<main class="wrap">
-	<header class="header">
-		<h1 class="title">Catch Liar - Lobby</h1>
+<div class="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 space-y-10 animate-fade-in relative overflow-hidden">
+	<div class="absolute inset-0 pointer-events-none opacity-50">
+		<div class="absolute top-20 left-20 text-6xl opacity-20 rotate-12">🎨</div>
+		<div class="absolute bottom-20 right-20 text-6xl opacity-20 -rotate-12">🕵️‍♂️</div>
+		<div class="absolute top-1/2 left-1/4 w-96 h-96 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
+		<div class="absolute top-1/2 right-1/4 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
+	</div>
 
-		<div class="conn">
-			<span class="pill">status: <strong>{connectionStatus}</strong></span>
-			<span class="pill">socketId: <span class="mono">{socketId || '-'}</span></span>
-			<span class="pill">last pong: <span class="mono">{lastPong || '-'}</span></span>
+	<div class="z-10 text-center space-y-2">
+		<h1 class="text-7xl font-game text-indigo-600 mb-2 drop-shadow-xl tracking-wide">Picture Liar</h1>
+		<p class="text-xl text-gray-500 font-bold">그림 속에 숨은 라이어를 찾아라!</p>
+	</div>
 
-			<div class="spacer"></div>
-
-			<button class="btn" on:click={ping} disabled={!socket.connected}>ping</button>
-			<button class="btn" on:click={disconnect} disabled={!socket.connected}>disconnect</button>
-			<button class="btn" on:click={connect} disabled={socket.connected}>connect</button>
+	<div class="z-10 w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl border-4 border-white transform transition-all duration-300">
+		<div class="flex p-1 bg-gray-100 rounded-2xl mb-6">
+			<button 
+				class={`flex-1 py-3 px-4 rounded-xl text-lg font-bold transition-all ${activeTab === 'create' ? 'bg-white text-indigo-600 shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
+				onclick={() => activeTab = 'create'}
+			>
+				방 만들기
+			</button>
+			<button 
+				class={`flex-1 py-3 px-4 rounded-xl text-lg font-bold transition-all ${activeTab === 'join' ? 'bg-white text-indigo-600 shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
+				onclick={() => activeTab = 'join'}
+			>
+				코드 입력
+			</button>
 		</div>
 
-		{#if errorMsg}
-			<p class="error">{errorMsg}</p>
-		{/if}
-	</header>
-
-	<section class="panel">
-		<h2 class="h2">Enter</h2>
-
-		<div class="grid">
-			<label class="field">
-				<span class="field__label">닉네임</span>
-				<input class="input" bind:value={nickname} placeholder="예: nickname" />
-			</label>
-
-			<label class="field">
-				<span class="field__label">방 코드</span>
-				<input class="input mono" bind:value={roomCode} placeholder="예: A1B2C3" />
-			</label>
-
-			<div class="row">
-				<button class="btn primary" on:click={createRoom} disabled={!socket.connected}
-					>방 만들기</button
-				>
-				<button class="btn" on:click={joinRoom} disabled={!socket.connected}>방 참가</button>
+		<div class="space-y-6">
+			<div>
+				<label for="nickname" class="block text-sm font-bold text-gray-500 mb-2 ml-1">닉네임</label>
+				<input
+					id="nickname"
+					type="text"
+					bind:value={nickname}
+					placeholder="사용할 닉네임을 입력하세요"
+					onkeydown={(e) => e.key === 'Enter' && handleAction()}
+					class="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-xl font-bold text-center focus:outline-none focus:border-indigo-500 focus:bg-white transition-all placeholder:text-gray-300"
+				/>
 			</div>
 
-			<p class="hint">방 만들기/참가 성공 시 자동으로 /room/{'{roomId}'} 로 이동합니다.</p>
+			{#if activeTab === 'join'}
+				<div class="animate-fade-in">
+					<label for="roomCode" class="block text-sm font-bold text-gray-500 mb-2 ml-1">방 코드</label>
+					<input
+						id="roomCode"
+						type="text"
+						bind:value={roomCode}
+						placeholder="입장 코드를 입력하세요"
+						onkeydown={(e) => e.key === 'Enter' && handleAction()}
+						class="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-xl font-bold text-center focus:outline-none focus:border-indigo-500 focus:bg-white transition-all placeholder:text-gray-300 uppercase"
+					/>
+				</div>
+			{/if}
+
+			<button
+				onclick={handleAction}
+				disabled={loading || !nickname.trim() || (activeTab === 'join' && !roomCode.trim())}
+				class={`w-full py-5 text-white rounded-2xl font-bold text-xl shadow-xl transform active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 group relative overflow-hidden ${activeTab === 'create' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100' : 'bg-gray-800 hover:bg-gray-900 shadow-gray-200'}`}
+			>
+				<span class="relative z-10 flex items-center justify-center gap-2">
+					{#if loading}
+						<svg class="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+						</svg>
+						{activeTab === 'create' ? '방 만드는 중...' : '입장 중...'}
+					{:else}
+						{#if activeTab === 'create'}
+							<i class="fa-solid fa-gamepad"></i> 새로운 방 만들기
+						{:else}
+							<i class="fa-solid fa-door-open"></i> 방 입장하기
+						{/if}
+					{/if}
+				</span>
+			</button>
 		</div>
-	</section>
-</main>
+	</div>
+
+	<footer class="z-10 text-gray-400 font-medium text-sm text-center">
+		<p>© 2026 Picture Liar by seohey</p>
+	</footer>
+</div>
 
 <style>
-	.wrap {
-		max-width: 900px;
-		margin: 0 auto;
-		padding: 24px 16px 56px;
-		display: grid;
-		gap: 16px;
-		font-family:
-			system-ui,
-			-apple-system,
-			Segoe UI,
-			Roboto,
-			sans-serif;
+	@keyframes blob {
+		0% { transform: translate(0px, 0px) scale(1); }
+		33% { transform: translate(30px, -50px) scale(1.1); }
+		66% { transform: translate(-20px, 20px) scale(0.9); }
+		100% { transform: translate(0px, 0px) scale(1); }
 	}
-
-	.header {
-		display: grid;
-		gap: 10px;
+	.animate-blob {
+		animation: blob 7s infinite;
 	}
-
-	.title {
-		margin: 0;
-		font-size: 24px;
-		font-weight: 800;
-		letter-spacing: -0.02em;
-	}
-
-	.conn {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		align-items: center;
-	}
-
-	.spacer {
-		flex: 1;
-	}
-
-	.panel {
-		border: 1px solid rgba(0, 0, 0, 0.12);
-		border-radius: 12px;
-		padding: 16px;
-		background: rgba(255, 255, 255, 0.75);
-	}
-
-	.h2 {
-		margin: 0 0 12px;
-		font-size: 16px;
-		font-weight: 800;
-	}
-
-	.grid {
-		display: grid;
-		gap: 12px;
-	}
-
-	.row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-	}
-
-	.field {
-		display: grid;
-		gap: 6px;
-	}
-
-	.field__label {
-		font-size: 12px;
-		opacity: 0.75;
-	}
-
-	.input {
-		width: 100%;
-		padding: 10px 12px;
-		border-radius: 10px;
-		border: 1px solid rgba(0, 0, 0, 0.2);
-		background: white;
-		outline: none;
-	}
-
-	.btn {
-		padding: 10px 12px;
-		border-radius: 10px;
-		border: 1px solid rgba(0, 0, 0, 0.2);
-		background: white;
-		cursor: pointer;
-	}
-
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.btn.primary {
-		font-weight: 800;
-	}
-
-	.pill {
-		display: inline-flex;
-		gap: 6px;
-		align-items: center;
-		border: 1px solid rgba(0, 0, 0, 0.12);
-		padding: 6px 10px;
-		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.85);
-	}
-
-	.mono {
-		font-family:
-			ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
-		font-size: 12px;
-	}
-
-	.hint {
-		margin: 12px 0 0;
-		opacity: 0.8;
-		font-size: 13px;
-		line-height: 1.4;
-	}
-
-	.error {
-		margin: 0;
-		color: #b42318;
-		font-weight: 800;
+	.animation-delay-2000 {
+		animation-delay: 2s;
 	}
 </style>
