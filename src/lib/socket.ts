@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:3001';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? 'wss://catch-liar.seohey.co.kr';
 
 let socket: Socket | null = null;
 
