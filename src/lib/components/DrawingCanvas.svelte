@@ -18,11 +18,18 @@
 	let ctx: CanvasRenderingContext2D | null = null;
 	let isDrawing = false;
 	let currentPoints: { x: number; y: number }[] = [];
+	let animationFrameId: number;
 
 	const drawStroke = (context: CanvasRenderingContext2D, stroke: any) => {
 		if (stroke.points && stroke.points.length > 0) {
-			// Points based drawing
-			if (stroke.points.length < 2) return;
+			if (stroke.points.length < 2) {
+				// Draw a dot if only 1 point
+				context.fillStyle = stroke.color;
+				context.beginPath();
+				context.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2);
+				context.fill();
+				return;
+			}
 			context.beginPath();
 			context.moveTo(stroke.points[0].x, stroke.points[0].y);
 			stroke.points.forEach((point: any, i: number) => {
@@ -34,7 +41,6 @@
 			context.lineJoin = 'round';
 			context.stroke();
 		} else if (stroke.d) {
-			// SVG path based drawing (legacy support if needed, or if we convert points to path)
 			const p = new Path2D(stroke.d);
 			context.strokeStyle = stroke.color || '#000';
 			context.lineWidth = stroke.width || 4;
@@ -49,6 +55,7 @@
 		
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+		// Grid
 		ctx.strokeStyle = '#E5E7EB';
 		ctx.lineWidth = 1;
 		ctx.beginPath();
@@ -60,36 +67,43 @@
 		}
 		ctx.stroke();
 
+		// Networked strokes
 		strokes.forEach((s: any) => drawStroke(ctx!, s));
 
-		if (currentPoints.length > 1) {
+		// Local active stroke
+		if (currentPoints.length > 0) {
 			drawStroke(ctx!, {
 				points: currentPoints,
 				color: '#4F46E5',
 				width: 4
 			});
 		}
+		
+		animationFrameId = requestAnimationFrame(render);
 	};
-
-	$effect(() => {
-		render(); 
-		if (strokes) {};
-		if (currentPoints) {};
-	});
 
 	onMount(() => {
 		ctx = canvas.getContext('2d');
+		// Start render loop
 		render();
+		
+		return () => cancelAnimationFrame(animationFrameId);
 	});
 
+	// Better coordinate calculation accounting for scale
 	const getCoordinates = (e: MouseEvent | TouchEvent) => {
 		if (!canvas) return { x: 0, y: 0 };
 		const rect = canvas.getBoundingClientRect();
+		// Account for CSS scaling (displayed size vs actual canvas resolution)
+		const scaleX = canvas.width / rect.width;
+		const scaleY = canvas.height / rect.height;
+		
 		const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
 		const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+		
 		return {
-			x: clientX - rect.left,
-			y: clientY - rect.top
+			x: (clientX - rect.left) * scaleX,
+			y: (clientY - rect.top) * scaleY
 		};
 	};
 
@@ -105,18 +119,18 @@
 		if (!isDrawing || !isMyTurn || disabled) return;
 		e.preventDefault();
 		const coords = getCoordinates(e);
-		currentPoints = [...currentPoints, coords];
+		currentPoints.push(coords); // Push directly to avoid spread overhead in loop
 	};
 
 	const handleEnd = () => {
 		if (!isDrawing) return;
 		isDrawing = false;
-		if (currentPoints.length > 1) {
+		if (currentPoints.length > 0) {
 			const d = `M ${currentPoints[0].x} ${currentPoints[0].y} ` + 
 					  currentPoints.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
 
 			onStrokeComplete({
-				points: currentPoints,
+				points: [...currentPoints], // copy
 				d,
 				color: '#4F46E5',
 				width: 4
@@ -124,14 +138,13 @@
 		}
 		currentPoints = [];
 	};
-
 </script>
 
 <div class="relative w-full aspect-square bg-white rounded-3xl shadow-inner border-4 border-indigo-100 overflow-hidden touch-none">
 	<canvas
 		bind:this={canvas}
-		width={400}
-		height={400}
+		width={800} 
+		height={800}
 		class="w-full h-full cursor-crosshair"
 		onmousedown={handleStart}
 		onmousemove={handleMove}
