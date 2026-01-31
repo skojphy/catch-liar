@@ -39,7 +39,7 @@
 	{#if isHost}
 		<div class="w-full max-w-md space-y-4">
 			<div class="bg-white rounded-2xl p-4 shadow-sm">
-				<label class="block text-sm font-bold text-gray-500 mb-2">카테고리 선택</label>
+				<span class="block text-sm font-bold text-gray-500 mb-2">카테고리 선택</span>
 				<div class="flex flex-wrap gap-2">
 					{#each CATEGORIES as cat}
 						<button
