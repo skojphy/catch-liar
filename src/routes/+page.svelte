@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { getSocket } from '$lib/socket';
+	import { getUserId } from '$lib/user';
 
 	let nickname = $state('');
 	let roomCode = $state('');
@@ -27,6 +28,7 @@
 		
 		loading = true;
 		window.localStorage.setItem('nickname', nickname);
+		const userId = getUserId();
 		
 		if (!s.connected) {
 			s.connect();
@@ -34,14 +36,14 @@
 
 		const onConnect = () => {
 			if (activeTab === 'create') {
-				s.emit('room:create', { nickname }, (res: { roomId: string }) => {
+				s.emit('room:create', { nickname, userId }, (res: { roomId: string }) => {
 					loading = false;
 					if (res.roomId) {
 						goto(`/room/${res.roomId}`);
 					}
 				});
 			} else {
-				s.emit('room:join', { roomId: roomCode.toUpperCase(), nickname }, (res: { ok: boolean; error?: string }) => {
+				s.emit('room:join', { roomId: roomCode.toUpperCase(), nickname, userId }, (res: { ok: boolean; error?: string }) => {
 					loading = false;
 					if (res.ok) {
 						goto(`/room/${roomCode.toUpperCase()}`);

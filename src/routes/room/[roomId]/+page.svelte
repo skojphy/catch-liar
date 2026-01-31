@@ -4,6 +4,7 @@
 	import { get } from 'svelte/store';
 	import { getSocket } from '$lib/socket';
 	import { roomStore, errorStore, setError, type RoomState } from '$lib/room';
+	import { getUserId } from '$lib/user';
 	import Lobby from '$lib/components/Lobby.svelte';
 	import RoleReveal from '$lib/components/RoleReveal.svelte';
 	import DrawingPhase from '$lib/components/DrawingPhase.svelte';
@@ -58,10 +59,12 @@
 			nickname = nickname.trim();
 			if (nickname) window.localStorage.setItem('nickname', nickname);
 		}
+		
+		const userId = getUserId();
 
 		s.on('connect', () => {
 			socketId = s.id ?? '';
-			s.emit('room:join', { roomId, nickname }, (res: { ok: boolean; error?: string }) => {
+			s.emit('room:join', { roomId, nickname, userId }, (res: { ok: boolean; error?: string }) => {
 				if (!res.ok) setError(res.error ?? 'JOIN_FAILED');
 			});
 		});
@@ -72,7 +75,7 @@
 
 		if (s.connected) {
 			socketId = s.id ?? '';
-			s.emit('room:join', { roomId, nickname }, (res: { ok: boolean; error?: string }) => {
+			s.emit('room:join', { roomId, nickname, userId }, (res: { ok: boolean; error?: string }) => {
 				if (!res.ok) setError(res.error ?? 'JOIN_FAILED');
 			});
 		}

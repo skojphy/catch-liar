@@ -11,6 +11,14 @@
 	}>();
 
 	let isHost = $derived(roomState.players.find((p: { id: any; }) => p.id === socketId)?.isHost ?? false);
+	
+	$effect(() => {
+		console.log('[Lobby] State Updated:', { 
+			socketId, 
+			isHost, 
+			players: roomState.players.map((p: { nickname: any; isHost: any; id: any; }) => ({ n: p.nickname, h: p.isHost, id: p.id })) 
+		});
+	});
 </script>
 
 <div class="flex flex-col items-center justify-center p-6 space-y-8 animate-fade-in">
