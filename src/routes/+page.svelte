@@ -1,19 +1,38 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { getSocket } from '$lib/socket';
-	import { getUserId } from '$lib/user';
+	import { getUserId, getUserProfile, logout, type UserProfile } from '$lib/user';
+	import { getKakaoAuthUrl } from '$lib/kakao_config';
 
 	let nickname = $state('');
 	let roomCode = $state('');
 	let loading = $state(false);
 	let activeTab = $state<'create' | 'join'>('create');
 	
+	let userProfile = $state<UserProfile | null>(null);
+
 	const s = getSocket();
 
 	$effect(() => {
-		const saved = window.localStorage.getItem('nickname');
-		if (saved) nickname = saved;
+		userProfile = getUserProfile();
+		
+		if (userProfile) {
+			nickname = userProfile.nickname;
+		} else {
+			const saved = window.localStorage.getItem('nickname');
+			if (saved) nickname = saved;
+		}
 	});
+
+	const handleKakaoLogin = () => {
+		window.location.href = getKakaoAuthUrl();
+	};
+
+	const handleLogout = () => {
+		logout();
+		userProfile = null;
+		nickname = '';
+	};
 
 	const handleAction = () => {
 		if (!nickname.trim()) {
@@ -27,7 +46,11 @@
 		}
 		
 		loading = true;
-		window.localStorage.setItem('nickname', nickname);
+		
+		if (!userProfile) {
+			window.localStorage.setItem('nickname', nickname);
+		}
+		
 		const userId = getUserId();
 		
 		if (!s.connected) {
@@ -94,7 +117,27 @@
 			</button>
 		</div>
 
+		{#if userProfile}
+			<div class="mb-6 p-4 bg-yellow-50 rounded-2xl border border-yellow-200 text-center animate-fade-in">
+				<div class="flex items-center justify-center space-x-3 mb-2">
+					{#if userProfile.avatar}
+						<img src={userProfile.avatar} alt="Profile" class="w-12 h-12 rounded-full border-2 border-yellow-400" />
+					{:else}
+						<span class="text-3xl">👤</span>
+					{/if}
+					<div class="text-left">
+						<p class="text-xs text-gray-500 font-bold">Logged in as</p>
+						<p class="text-lg font-bold text-gray-800">{userProfile.nickname}</p>
+					</div>
+				</div>
+				<button onclick={handleLogout} class="text-xs text-gray-400 underline hover:text-gray-600">
+					로그아웃 (다른 계정으로 로그인)
+				</button>
+			</div>
+		{/if}
+
 		<div class="space-y-6">
+			{#if !userProfile}
 			<div>
 				<label for="nickname" class="block text-sm font-bold text-gray-500 mb-2 ml-1">닉네임</label>
 				<input
@@ -106,6 +149,7 @@
 					class="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-xl font-bold text-center focus:outline-none focus:border-indigo-500 focus:bg-white transition-all placeholder:text-gray-300"
 				/>
 			</div>
+			{/if}
 
 			{#if activeTab === 'join'}
 				<div class="animate-fade-in">
@@ -135,13 +179,31 @@
 						{activeTab === 'create' ? '방 만드는 중...' : '입장 중...'}
 					{:else}
 						{#if activeTab === 'create'}
-							<i class="fa-solid fa-gamepad"></i> 새로운 방 만들기
+							<i class="fa-solid fa-gamepad"></i> {userProfile ? '이 계정으로 방 만들기' : '입장하기'}
 						{:else}
 							<i class="fa-solid fa-door-open"></i> 방 입장하기
 						{/if}
 					{/if}
 				</span>
 			</button>
+
+			{#if !userProfile}
+				<div class="relative flex py-2 items-center">
+					<div class="flex-grow border-t border-gray-200"></div>
+					<span class="flex-shrink-0 mx-4 text-gray-400 text-sm font-medium">또는</span>
+					<div class="flex-grow border-t border-gray-200"></div>
+				</div>
+
+				<button
+					onclick={handleKakaoLogin}
+					class="w-full py-4 bg-[#FEE500] hover:bg-[#FDD800] text-[#3c1e1e] rounded-2xl font-bold text-lg shadow-sm transform active:scale-95 transition-all flex items-center justify-center gap-2"
+				>
+					<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+						<path d="M12 3C6.477 3 2 6.477 2 10.765c0 2.76 1.867 5.176 4.706 6.556-.217.797-.79 2.923-.902 3.364-.142.556.204.55.433.4l2.848-1.897c.307-.204 1.776-1.157 2.16-1.396.575.084 1.166.128 1.765.128 5.523 0 10-3.477 10-7.765S17.523 3 12 3z"/>
+					</svg>
+					카카오 로그인으로 시작
+				</button>
+			{/if}
 		</div>
 	</div>
 
